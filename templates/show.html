@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<style>
+		body, html { margin: 0; padding: 0; background: black; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+		img { max-width: 100vw; max-height: 100vh; object-fit: contain; transition: opacity 0.5s; opacity: 1; }
+		.fade { opacity: 0; }
+	</style>
+</head>
+<body>
+	<img id="display" src="" />
+	<script>
+		let images = [];
+		let currentFilename = "";
+		let pendingNewImage = ""; 
+		let interval = 5000;
+		let seen = new Set();
+		let imgEl = document.getElementById('display');
+
+		function reportNowShowing(filename) {
+			fetch('/api/now-showing', {
+				method: 'POST',
+				body: JSON.stringify({filename: filename}),
+				headers: {'Content-Type': 'application/json'}
+			}).catch(e => console.error(e));
+		}
+
+		async function poll() {
+			try {
+				const res = await fetch('/api/state');
+				const data = await res.json();
+				
+				// Check if the interval changed in the admin panel
+				const newInterval = data.interval * 1000;
+				if (newInterval !== interval && newInterval > 0) {
+					interval = newInterval;
+					resetTimer(); // Restart the timer immediately with the new duration
+				}
+				
+				const allowed = data.images.filter(i => i.status === 'allowed');
+				const newImages = allowed.filter(i => !seen.has(i.filename));
+				images = allowed;
+				
+				// Handle case where NO images are allowed
+				if (images.length === 0) {
+					if (currentFilename !== "") {
+						currentFilename = "";
+						pendingNewImage = ""; 
+						showImage(""); // Fade to blank
+					}
+					return;
+				}
+
+				// Check if the CURRENT image was just denied via admin
+				const currentIsStillAllowed = images.some(i => i.filename === currentFilename);
+				
+				if (newImages.length > 0) {
+					seen = new Set(allowed.map(i => i.filename));
+					
+					if (currentFilename === "") {
+						// If the screen is completely blank, show instantly
+						currentFilename = newImages[newImages.length - 1].filename;
+						showImage(currentFilename);
+						resetTimer();
+					} else {
+						// Queue the newest image for the next natural timer tick
+						pendingNewImage = newImages[newImages.length - 1].filename;
+					}
+				} else if (!currentIsStillAllowed && currentFilename !== "") {
+					// The image currently on screen was just denied! Skip instantly.
+					nextImage();
+					resetTimer();
+				}
+
+			} catch(e) {}
+		}
+
+		function showImage(filename) {
+			if (!filename) {
+				imgEl.classList.add('fade');
+				setTimeout(() => { imgEl.src = ""; }, 500);
+				reportNowShowing("");
+				return;
+			}
+			imgEl.classList.add('fade');
+			setTimeout(() => {
+				imgEl.src = '/uploads/' + filename;
+				imgEl.classList.remove('fade');
+				reportNowShowing(filename);
+			}, 500);
+		}
+
+		function nextImage() {
+			if (images.length === 0) {
+				currentFilename = "";
+				showImage("");
+				return;
+			}
+			
+			// If we have a new image queued up, show it next
+			if (pendingNewImage !== "") {
+				let target = pendingNewImage;
+				pendingNewImage = "";
+				
+				// Double-check it wasn't denied by the admin while it was waiting
+				if (images.some(i => i.filename === target)) {
+					currentFilename = target;
+					showImage(currentFilename);
+					
+					// Re-sync the interval to ensure it stays on screen for the full time
+					resetTimer(); 
+					return;
+				}
+			}
+
+			let idx = images.findIndex(i => i.filename === currentFilename);
+			// If not found (e.g. was just denied), start at -1 so (idx+1) is 0
+			if (idx === -1) idx = -1;
+			
+			idx = (idx + 1) % images.length;
+			currentFilename = images[idx].filename;
+			showImage(currentFilename);
+		}
+
+		let timer;
+		function resetTimer() {
+			clearInterval(timer);
+			timer = setInterval(nextImage, interval);
+		}
+
+		setInterval(poll, 1000);
+		resetTimer();
+	</script>
+</body>
+</html>
