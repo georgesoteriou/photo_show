@@ -113,7 +113,3 @@ xattr -d com.apple.quarantine photobooth-mac
 ```
 
 Then, execute it normally with `./photobooth-mac`.
-
-```
-
-```
