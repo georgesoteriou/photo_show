@@ -1,115 +1,96 @@
-Here is a clean, professional `README.md` for your project. I have included a dedicated "Demo" section at the top with placeholder image tags where you can drop in your screenshots.
+# **📸 Photoshow**
 
-# 📸 Live Photo Booth
-
-A lightweight, zero-dependency Live Photo Booth server written in Go. It runs as a single binary on Windows, macOS, or Linux. 
+A lightweight, zero-dependency Live Photo Show server written in Go. It runs as a single binary on Windows, macOS, or Linux, or inside an all-in-one Tailscale-enabled Docker container.
 
 Guests can upload photos from their phones, and the photos instantly appear on a live presentation screen. It includes a built-in admin panel to moderate photos and adjust display settings on the fly.
 
-## ✨ Features
-* **Zero Dependencies:** Compiles to a single binary with all HTML/JS embedded.
-* **Instant Sync:** New uploads instantly jump to the screen without waiting.
-* **Admin Moderation:** One-click approve/deny photos in real-time.
-* **Two Modes:** Choose between "Auto-allow" (blacklist mode) or "Require approval" (whitelist mode).
-* **Dual-Port Security:** Public uploads run on port `8080`, while the private presentation and admin panel run on port `8081`.
+## **✨ Features**
 
----
+* **Zero Dependencies:** Compiles to a single binary with all HTML/JS embedded.  
+* **Instant Sync:** New uploads instantly jump to the screen without waiting.  
+* **Admin Moderation:** One-click approve/deny photos in real-time.  
+* **Two Modes:** Choose between "Auto-allow" or "Require approval" for new uploads.  
+* **Dual-Port Security:** Public uploads run on port 8080, while the private presentation and admin panel run on port 8081\.
 
-## 🚀 Demo
+## **🚀 Demo**
 
-<!-- Add your demo images to a 'docs' or 'assets' folder and update the paths below -->
+### **Upload Screen (Mobile)**
 
-### Upload Screen (Mobile)
-> *Placeholder: Add an image of the mobile upload UI here*
-> 
-> `![Upload Screen UI](path/to/your/upload-image.png)`
+> ![Upload Screen UI](./images/upload.png)
 
-### Admin Panel
-> *Placeholder: Add an image of the admin panel with the "Now Showing" badge here*
-> 
-> `![Admin Panel UI](path/to/your/admin-image.png)`
+### **Admin Panel**
 
-### Live Display
-> *Placeholder: Add an image of the live presentation screen here*
-> 
-> `![Live Display UI](path/to/your/display-image.png)`
+> ![Admin Panel UI](./images/admin.png)
 
----
+### **Live Display**
 
-## 🛠 Getting Started
+> ![Live Display UI](./images/show.png)
 
-### 1. Run the Server
-Simply execute the binary for your OS. It will automatically create an `uploads/` folder in the same directory to store the photos.
-
-```bash
-# On Linux / macOS
-./photobooth
-
-# On Windows
-photobooth.exe
-
-```
-
-### 2. Access the Application
+## **🛠 Getting Started**
 
 The server runs on two separate ports to keep your admin tools secure:
 
-* **Upload Page (Public):** `http://localhost:8080/`
-* **Live Display (Private):** `http://localhost:8081/show`
-* **Admin Panel (Private):** `http://localhost:8081/admin`
+* **Upload Page (Public):** http://localhost:8080/  
+* **Live Display (Private):** http://localhost:8081/show  
+* **Admin Panel (Private):** http://localhost:8081/admin
 
----
 
-## 🌍 Exposing the Upload Page via Tailscale
+### **Option A: All-in-One Docker Container (Tailscale Built-in)**
 
-To let guests upload photos without being on your local Wi-Fi, you can use [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) to expose **only** the upload port (`8080`), keeping your admin panel securely hidden.
+You can run Photoshow using the pre-built image from your GitHub Container Registry, which has Tailscale baked right in. It uses a Docker volume to persist your Tailscale certificates and state across restarts.
 
-Run this script to start the funnel:
+#### **1\. Run the Container**
 
-```bash
-#!/bin/bash
-# Route public internet traffic to local port 8080
-tailscale serve https / [http://127.0.0.1:8080](http://127.0.0.1:8080)
-# Turn on the funnel
-tailscale funnel 8080 on
+To allow Tailscale to create a virtual network interface inside Docker, include `--cap-add=NET_ADMIN` and `--device=/dev/net/tun`
+```
+docker run -d \
+  --name photoshow \
+  --cap-add=NET_ADMIN \
+  --cap-add=NET_RAW \
+  -p 8080:8080 \
+  -p 8081:8081 \
+  -v $(pwd)/uploads:/app/uploads \
+  -v tailscale_state:/var/lib/tailscale \
+  ghcr.io/georgesoteriou/photo_show:latest
 ```
 
-Tailscale will generate a public URL (e.g., `https://your-machine.tailnet-name.ts.net`) that you can turn into a QR code for your guests!
+#### **2\. Authenticate Tailscale via Logs**
 
----
+Because this setup does not use auth keys, check your container logs to authenticate the node:
+```
+docker logs -f photoshow
+```
+The logs will output a login URL (e.g., https://login.tailscale.com/a/...). Open that link in your browser, log in, and approve the new node. Once approved, the container will automatically boot up the funnel and provide your secure public upload URL\!
 
-## 💻 Building from Source
+### **Option B: Standalone Binary & Tailscale Script**
 
-To compile the application yourself, you need [Go](https://go.dev/) installed.
-
-```bash
-# Clone the repository and cd into it
-# Build for your current OS:
-go build -o photobooth main.go
-
+Download or compile the binary for your OS and execute it:
+```
+./photoshow
+```
+To expose the public upload port (8080) securely via Tailscale, use the provided `start_network.sh` script:
+```
+chmod +x start_network.sh  
+./start_network.sh
 ```
 
-**Cross-compiling for macOS from Linux/Windows:**
+## **💻 Building from Source**
 
-```bash
-# For Apple Silicon (M1/M2/M3)
-GOOS=darwin GOARCH=arm64 go build -o photobooth-mac main.go
+To compile the application yourself, you need [Go](https://go.dev/) installed:
 
-# For Intel Macs
-GOOS=darwin GOARCH=amd64 go build -o photobooth-mac-intel main.go
-
+### **Windows**
 ```
-
-### ⚠️ Note for macOS Users
-
-If you download the pre-compiled Mac binary, macOS Gatekeeper may block it. To run it, open your terminal and run:
-
-```bash
-# Make it executable
-chmod +x photobooth-mac
-# Remove the quarantine flag
-xattr -d com.apple.quarantine photobooth-mac
-
+GOOS=windows GOARCH=amd64 go build -o photoshow.exe main.go
 ```
+### **macOS**
+```
+# Apple Silicon (M1/M2/M3/M4)  
+GOOS=darwin GOARCH=arm64 go build -o photoshow-mac-arm64 main.go
 
-Then, execute it normally with `./photobooth-mac`.
+# Intel Macs  
+GOOS=darwin GOARCH=amd64 go build -o photoshow-mac-intel main.go
+```
+### **Linux**
+```
+GOOS=linux GOARCH=amd64 go build -o photoshow-linux-amd64 main.go  
+```
