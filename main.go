@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +17,9 @@ import (
 
 //go:embed templates/*
 var templatesFS embed.FS
+
+//go:embed assets/*
+var assetsFS embed.FS
 
 type Image struct {
 	Filename string `json:"filename"`
@@ -56,11 +60,15 @@ func main() {
 	// --- PORT 8080: PUBLIC UPLOAD FLOW ---
 	muxUpload := http.NewServeMux()
 	muxUpload.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/upload.html")
 		w.Write(html)
 	})
 	muxUpload.HandleFunc("/upload", handleUpload)
+
+	// Serve the public assets (logo, etc.) for the upload page on :8080.
+	publicAssetsSub, _ := fs.Sub(assetsFS, "assets")
+	muxUpload.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(publicAssetsSub))))
 
 	go func() {
 		fmt.Println("🚀 Public Upload Server running on http://localhost:8080")
@@ -71,13 +79,16 @@ func main() {
 	muxAdmin := http.NewServeMux()
 	muxAdmin.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
+	assetsSub, _ := fs.Sub(assetsFS, "assets")
+	muxAdmin.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsSub))))
+
 	muxAdmin.HandleFunc("/show", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/show.html")
 		w.Write(html)
 	})
 	muxAdmin.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/admin.html")
 		w.Write(html)
 	})
@@ -126,6 +137,33 @@ func main() {
 		}
 		state.Unlock()
 		w.WriteHeader(http.StatusOK)
+	})
+
+	muxAdmin.HandleFunc("/api/delete-all", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Use POST", http.StatusMethodNotAllowed)
+			return
+		}
+		// Remove every regular file in the uploads folder.
+		deleted := 0
+		if entries, rerr := os.ReadDir("uploads"); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				if os.Remove(filepath.Join("uploads", e.Name())) == nil {
+					deleted++
+				}
+			}
+		}
+		// Clear in-memory state so the show page stops immediately
+		// (it polls /api/state every second and fades to blank).
+		state.Lock()
+		state.Images = make([]*Image, 0)
+		state.NowShowing = ""
+		state.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"deleted": deleted})
 	})
 
 	muxAdmin.HandleFunc("/api/now-showing", func(w http.ResponseWriter, r *http.Request) {
