@@ -1,87 +1,112 @@
 <!DOCTYPE html>
 <html>
 <head>
+	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Photoshow</title>
+	<title>Antama</title>
 	<!-- Embedded SVG Favicon -->
 	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23764ba2'%3E%3Cpath d='M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2m8 3a5 5 0 0 0-5 5 5 5 0 0 0 5 5 5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 2a3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1 3-3z'/%3E%3C/svg%3E">
 	<style>
-		body { 
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-			text-align: center; 
-			padding: 2rem 1rem; 
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+			text-align: center;
+			padding: 2rem 1rem;
 			margin: 0;
-			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-			color: white; 
+			background: #f2c6b6;
+			color: #2a2a2a;
 			min-height: 100vh;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 		}
-		.container { 
+		.container {
 			width: 100%;
-			max-width: 400px; 
-			background: rgba(255, 255, 255, 0.1); 
-			backdrop-filter: blur(12px);
-			-webkit-backdrop-filter: blur(12px);
-			padding: 3rem 2rem; 
-			border-radius: 24px; 
-			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-			border: 1px solid rgba(255, 255, 255, 0.2);
+			max-width: 520px;
+			background: #ffffff;
+			padding: 3rem 2rem;
+			border-radius: 24px;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+			border: 1px solid rgba(0, 0, 0, 0.05);
 		}
-		h1 { margin-top: 0; font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
-		p { color: rgba(255, 255, 255, 0.8); margin-bottom: 2rem; line-height: 1.5; }
-		
+		.logo { width: 100%; max-width: 396px; height: auto; display: block; margin: 0 auto 1.25rem; }
+		p { color: #4a4a4a; margin-bottom: 2rem; line-height: 1.5; }
+
+		/* Greek line sits above the English line everywhere it appears */
+		.greek { display: block; }
+		.english { display: block; opacity: 0.8; font-size: 0.9em; }
+
 		/* Hide the actual file input */
 		input[type="file"] { display: none; }
-		
+
 		/* Style the label as a massive button */
-		.upload-btn { 
+		.upload-btn {
 			display: flex;
 			flex-direction: column;
 			align-items: center;
 			justify-content: center;
-			background: white; 
-			color: #764ba2; 
-			padding: 2rem; 
-			border-radius: 16px; 
-			cursor: pointer; 
-			font-size: 1.2rem; 
+			background: #b23b2e;
+			color: #ffffff;
+			padding: 1.75rem 2rem;
+			border-radius: 16px;
+			cursor: pointer;
+			font-size: 1.05rem;
 			font-weight: bold;
-			transition: transform 0.2s, box-shadow 0.2s;
-			box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+			transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+			box-shadow: 0 4px 15px rgba(0,0,0,0.22);
 		}
-		.upload-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+		.upload-btn:hover { transform: translateY(-2px); background: #9a3327; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
 		.upload-btn:active { transform: translateY(0); }
-		.upload-btn svg { width: 48px; height: 48px; margin-bottom: 1rem; fill: currentColor; }
-		
-		.success { 
-			background: rgba(46, 204, 113, 0.2); 
-			color: #a8ffc9; 
+		.upload-btn svg { width: 44px; height: 44px; margin-bottom: 0.9rem; fill: currentColor; }
+
+		.success {
+			background: rgba(46, 204, 113, 0.12);
+			color: #1e7d3c;
 			padding: 1rem;
 			border-radius: 12px;
-			margin-bottom: 1.5rem; 
-			display: none; 
+			margin-bottom: 1.5rem;
+			display: none;
 			border: 1px solid rgba(46, 204, 113, 0.4);
 			font-weight: 500;
 		}
+
+		.disclaimer { margin-top: 1.5rem; margin-bottom: 0; }
+		.disclaimer a {
+			color: #7a7a7a;
+			font-size: 0.82rem;
+			text-decoration: underline;
+			font-weight: 600;
+		}
+		.disclaimer a:hover { color: #b23b2e; }
 	</style>
 </head>
 <body>
 	<div class="container">
-		<div class="success" id="msg">Your photo was sent to the big screen!</div>
-		<h1>Photoshow</h1>
-		<p>Snap a picture and share it with the event instantly.</p>
-		
+		<div class="success" id="msg">
+			<span class="greek">Η φωτογραφία σου στάλθηκε στην μεγάλη οθόνη!</span>
+			<span class="english">Your photo was sent to the big screen!</span>
+		</div>
+		<img class="logo" src="/assets/logo.png" alt="Photoshow">
+		<p>
+			<span class="greek">Τράβηξε μια φωτογραφία και μοιράσέ την με την εκδήλωση αμέσως.</span>
+			<span class="english">Snap a picture and share it with the event instantly.</span>
+		</p>
+
 		<form id="upload-form" action="/upload" method="POST" enctype="multipart/form-data">
 			<label class="upload-btn">
 				<svg viewBox="0 0 24 24">
 					<path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2m8 3a5 5 0 0 0-5 5 5 5 0 0 0 5 5 5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 2a3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1 3-3z"/>
 				</svg>
-				Choose Photo
+				<span class="greek">Επίλεξε Φωτογραφία</span>
+				<span class="english">Choose Photo</span>
 				<input type="file" name="image" accept="image/*" id="file-input" required>
 			</label>
 		</form>
+
+		<p class="disclaimer">
+			<a href="/assets/legal-notice.txt" download="Antama-Legal-Notice.txt">
+				<span class="english">Legal Notice</span>
+			</a>
+		</p>
 	</div>
 	<script>
 		// Show success message if redirected

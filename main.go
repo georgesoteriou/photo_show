@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +17,9 @@ import (
 
 //go:embed templates/*
 var templatesFS embed.FS
+
+//go:embed assets/*
+var assetsFS embed.FS
 
 type Image struct {
 	Filename string `json:"filename"`
@@ -37,8 +41,29 @@ var state = AppState{
 	NowShowing: "",
 }
 
+// appDir returns the directory containing the running executable (symlinks
+// resolved), falling back to the current working directory. Anchoring all
+// on-disk paths to the executable — rather than the process CWD — keeps
+// folders like "uploads" beside the program no matter how it is launched
+// (Terminal, Finder double-click, a launchd job, etc.).
+func appDir() string {
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		return filepath.Dir(exe)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+	return "."
+}
+
+// uploadsDir is the absolute path to the "uploads" folder beside the binary.
+var uploadsDir = filepath.Join(appDir(), "uploads")
+
 func main() {
-	if err := os.MkdirAll("uploads", 0755); err != nil {
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
 		log.Fatal("Failed to create uploads directory:", err)
 	}
 
@@ -56,11 +81,15 @@ func main() {
 	// --- PORT 8080: PUBLIC UPLOAD FLOW ---
 	muxUpload := http.NewServeMux()
 	muxUpload.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/upload.html")
 		w.Write(html)
 	})
 	muxUpload.HandleFunc("/upload", handleUpload)
+
+	// Serve the public assets (logo, etc.) for the upload page on :8080.
+	publicAssetsSub, _ := fs.Sub(assetsFS, "assets")
+	muxUpload.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(publicAssetsSub))))
 
 	go func() {
 		fmt.Println("🚀 Public Upload Server running on http://localhost:8080")
@@ -69,15 +98,18 @@ func main() {
 
 	// --- PORT 8081: PRIVATE SHOW & ADMIN FLOW ---
 	muxAdmin := http.NewServeMux()
-	muxAdmin.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
+	muxAdmin.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
+
+	assetsSub, _ := fs.Sub(assetsFS, "assets")
+	muxAdmin.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsSub))))
 
 	muxAdmin.HandleFunc("/show", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/show.html")
 		w.Write(html)
 	})
 	muxAdmin.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html, _ := templatesFS.ReadFile("templates/admin.html")
 		w.Write(html)
 	})
@@ -91,7 +123,9 @@ func main() {
 	})
 
 	muxAdmin.HandleFunc("/api/toggle-image", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Filename string `json:"filename"` }
+		var req struct {
+			Filename string `json:"filename"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 
 		state.Lock()
@@ -128,10 +162,39 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	muxAdmin.HandleFunc("/api/delete-all", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Use POST", http.StatusMethodNotAllowed)
+			return
+		}
+		// Remove every regular file in the uploads folder.
+		deleted := 0
+		if entries, rerr := os.ReadDir(uploadsDir); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				if os.Remove(filepath.Join(uploadsDir, e.Name())) == nil {
+					deleted++
+				}
+			}
+		}
+		// Clear in-memory state so the show page stops immediately
+		// (it polls /api/state every second and fades to blank).
+		state.Lock()
+		state.Images = make([]*Image, 0)
+		state.NowShowing = ""
+		state.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"deleted": deleted})
+	})
+
 	muxAdmin.HandleFunc("/api/now-showing", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Filename string `json:"filename"` }
+		var req struct {
+			Filename string `json:"filename"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		state.Lock()
 		state.NowShowing = req.Filename
 		state.Unlock()
@@ -160,7 +223,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	ext := filepath.Ext(header.Filename)
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	outPath := filepath.Join("uploads", filename)
+	outPath := filepath.Join(uploadsDir, filename)
 
 	out, err := os.Create(outPath)
 	if err != nil {
@@ -170,20 +233,20 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	defer out.Close()
 	io.Copy(out, file)
 
-	syncFolder() 
+	syncFolder()
 
 	http.Redirect(w, r, "/?success=1", http.StatusSeeOther)
 }
 
 func syncFolder() {
-	entries, err := os.ReadDir("uploads")
+	entries, err := os.ReadDir(uploadsDir)
 	if err != nil {
 		return
 	}
 
 	var files []os.FileInfo
 	diskMap := make(map[string]bool)
-	
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			info, err := entry.Info()
@@ -203,7 +266,7 @@ func syncFolder() {
 
 	var newImages []*Image
 	known := make(map[string]bool)
-	
+
 	for _, img := range state.Images {
 		if diskMap[img.Filename] {
 			newImages = append(newImages, img)
